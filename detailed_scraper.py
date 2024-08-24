@@ -8,8 +8,8 @@ import time
 import random
 
 # Load the initial dataset
-input_file = 'scraped_data_async.csv'
-output_file = 'enriched_data.csv'
+input_file = 'horse_data.csv'
+output_file = 'updated_enriched_data.csv'
 
 # Read the initial dataset
 df_initial = pd.read_csv(input_file)

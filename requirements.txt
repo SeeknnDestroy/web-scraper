@@ -7,3 +7,4 @@ aiofiles
 scikit-learn
 seaborn
 matplotlib
+xgboost

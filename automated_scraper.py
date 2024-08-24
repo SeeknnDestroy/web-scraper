@@ -30,7 +30,7 @@ headers = {
 }
 
 # Output file
-output_file = 'scraped_data_async.csv'
+output_file = 'horse_data.csv'
 
 # Initialize the CSV file (with headers) if it doesn't exist
 with open(output_file, 'w', encoding='utf-8-sig') as f:
