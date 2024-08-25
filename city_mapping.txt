@@ -1,0 +1,17 @@
+0: ABD
+1: Abu Dhabi Birleşik Arap Emirlikleri
+2: Adana
+3: Ankara
+4: Antalya 
+5: Bursa
+6: Churchill Downs ABD
+7: Deauville Fransa
+8: Diyarbakır
+9: Elazığ 
+10: Kempton Park Birleşik Krallık
+11: Kocaeli
+12: Meydan Dubai
+13: Santa Anita Park ABD
+14: İstanbul
+15: İzmir
+16: Şanlıurfa
