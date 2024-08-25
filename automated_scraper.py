@@ -29,13 +29,18 @@ headers = {
     "x-requested-with": "XMLHttpRequest",
 }
 
-# Output file
+# Output files
 output_file = 'horse_data.csv'
+log_file = 'scraping_errors.log'
 
 # Initialize the CSV file (with headers) if it doesn't exist
 with open(output_file, 'w', encoding='utf-8-sig') as f:
     df = pd.DataFrame(columns=["At İsmi", "Irk", "Cinsiyet", "Yaş", "details"])
     df.to_csv(f, index=False, encoding='utf-8-sig')
+
+async def log_error(message):
+    async with aiofiles.open(log_file, 'a', encoding='utf-8') as log_f:
+        await log_f.write(message + '\n')
 
 async def fetch_page(session, page, max_retries=5, retry_delay=5):
     params = {
@@ -57,8 +62,10 @@ async def fetch_page(session, page, max_retries=5, retry_delay=5):
                 retries += 1
                 await asyncio.sleep(retry_delay)
             else:
-                print(f"Failed to fetch page {page} after {max_retries} attempts.")
-                raise
+                error_message = f"Failed to fetch page {page} after {max_retries} attempts. Error: {e}"
+                print(error_message)
+                await log_error(error_message)
+                return None
 
 def parse_data(html_content):
     soup = BeautifulSoup(html_content, 'html.parser')
@@ -67,25 +74,27 @@ def parse_data(html_content):
     data = []
     for row in table_rows:
         columns = row.find_all('td')
-        if len(columns) >= 4:  # Ensure there are enough columns
-            horse_name = columns[0].get_text(strip=True)
-            breed = columns[1].get_text(strip=True)
-            gender = columns[2].get_text(strip=True)
-            age = columns[3].get_text(strip=True)
+        if len(columns) < 4:
+            continue
+        
+        horse_name = columns[0].get_text(strip=True)
+        breed = columns[1].get_text(strip=True)
+        gender = columns[2].get_text(strip=True)
+        age = columns[3].get_text(strip=True)
 
-            # Extract the "details" link
-            details_link = columns[0].find('a')['href'] if columns[0].find('a') else None
-            if details_link and 'Query/' in details_link:
-                details_link = details_link.split('Query/')[-1]
-                details_link = details_base_url + details_link
+        # Extract the "details" link
+        details_link = columns[0].find('a')['href'] if columns[0].find('a') else None
+        if details_link and 'Query/' in details_link:
+            details_link = details_link.split('Query/')[-1]
+            details_link = details_base_url + details_link
 
-            data.append({
-                "At İsmi": horse_name,
-                "Irk": breed,
-                "Cinsiyet": gender,
-                "Yaş": age,
-                "details": details_link
-            })
+        data.append({
+            "At İsmi": horse_name,
+            "Irk": breed,
+            "Cinsiyet": gender,
+            "Yaş": age,
+            "details": details_link
+        })
     return data
 
 async def save_data(data):
@@ -93,23 +102,26 @@ async def save_data(data):
     async with aiofiles.open(output_file, 'a', encoding='utf-8-sig') as f:
         await f.write(df.to_csv(header=False, index=False, encoding='utf-8-sig'))
 
-async def scrape_all_pages(start_page=0, max_concurrent_requests=50, max_retries=10, retry_delay=2):
+async def scrape_all_pages(start_page=0, max_concurrent_requests=50, max_retries=5, retry_delay=2):
     async with aiohttp.ClientSession() as session:
         page = start_page
         while True:
             tasks = [fetch_page(session, page + i, max_retries, retry_delay) for i in range(max_concurrent_requests)]
-            try:
-                results = await asyncio.gather(*tasks)
-            except aiohttp.ClientResponseError as e:
-                print(f"Terminating scraping due to persistent errors: {e}")
-                break
+            results = await asyncio.gather(*tasks)
 
             all_data = []
             for result in results:
                 data = parse_data(result)
                 all_data.extend(data)
-            await save_data(all_data)
-            print(f"Scraped and saved data for pages {page} to {page + max_concurrent_requests - 1}")
+            if all_data:
+                await save_data(all_data)
+                print(f"Scraped and saved data for pages {page} to {page + max_concurrent_requests - 1}")
+            else:
+                message = f"No data scraped for pages {page} to {page + max_concurrent_requests - 1}. Terminating..."
+                print(message)
+                log_error(message)
+                break
+
             page += max_concurrent_requests
 
 # Run the async scraper
