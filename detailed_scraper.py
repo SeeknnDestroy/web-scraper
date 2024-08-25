@@ -8,8 +8,8 @@ import time
 import random
 
 # Load the initial dataset
-input_file = 'horse_data.csv'
-output_file = 'updated_enriched_data.csv'
+input_file = 'horses.csv'
+output_file = 'horse_details.csv'
 
 # Read the initial dataset
 df_initial = pd.read_csv(input_file)
@@ -127,7 +127,7 @@ headers = {
     "user-agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36",
 }
 
-# Asynchronous function to fetch and parse the race data for each horse with retries and session reset
+# Asynchronous function to fetch and parse the horse details
 async def fetch_race_details(row, retries=10, retry_delay=4):
     details_url = row['details']
     
@@ -136,9 +136,10 @@ async def fetch_race_details(row, retries=10, retry_delay=4):
 
     for attempt in range(retries):
         try:
+            # Randomize sec-ch-ua values or remove some headers
             headers = {
                 "cookie": random.choice(cookies_list),
-                "sec-ch-ua": '"Chromium";v="128", "Not;A=Brand";v="24", "Google Chrome";v="128"',
+                "sec-ch-ua": f'"Chromium";v="{random.randint(80, 128)}", "Not;A=Brand";v="{random.randint(24, 128)}", "Google Chrome";v="{random.randint(80, 128)}"',
                 "sec-ch-ua-platform": '"Linux"',
                 "sec-fetch-dest": "document",
                 "sec-fetch-mode": "navigate",
@@ -158,21 +159,17 @@ async def fetch_race_details(row, retries=10, retry_delay=4):
                     html_content = await response.text()
                     soup = BeautifulSoup(html_content, 'html.parser')
 
-                    # Check if race data is present
-                    no_data_div = soup.find(string="Aradığınız kriterlere uygun veri bulunmamaktadır")
-                    if no_data_div:
-                        # No race data available
-                        return [{
-                            "At İsmi": row["At İsmi"],
-                            "Irk": row["Irk"],
-                            "Cinsiyet": row["Cinsiyet"],
-                            "Yaş": row["Yaş"],
-                            "Şehir": None,
-                            "Mesafe": None,
-                            "Derece": None,
-                            "details": details_url
-                        }]
-                    
+                    # Extract horse details (Doğum Tarihi, Handikap Puanı)
+                    horse_details_div = soup.find('div', class_='grid_8 alpha omega kunye')
+                    dogum_tarihi = None
+                    handikap_puani = None
+
+                    dob_span = horse_details_div.find('span', string='Doğ. Trh')
+                    handicap_span = horse_details_div.find('span', string='Handikap P.')
+
+                    dogum_tarihi = dob_span.find_next('span', class_='value').get_text(strip=True) if dob_span else None
+                    handikap_puani = handicap_span.find_next('span', class_='value').get_text(strip=True) if handicap_span else None
+
                     # Extract race data
                     race_data = []
                     table_rows = soup.select('tbody.ajaxtbody tr')
@@ -182,25 +179,58 @@ async def fetch_race_details(row, retries=10, retry_delay=4):
                             tarih = columns[0].get_text(strip=True) if len(columns) > 0 else None
                             sehir = columns[1].get_text(strip=True) if len(columns) > 1 else None
                             mesafe = columns[2].get_text(strip=True) if len(columns) > 2 else None
+                            pist = columns[3].get_text(strip=True) if len(columns) > 3 else None
                             derece = columns[5].get_text(strip=True) if len(columns) > 5 else None
+                            siklet = columns[6].get_text(strip=True) if len(columns) > 6 else None
+                            takı = columns[7].get_text(strip=True) if len(columns) > 7 else None
+                            jokey = columns[8].get_text(strip=True) if len(columns) > 8 else None
 
                             race_data.append({
                                 "At İsmi": row["At İsmi"],
                                 "Irk": row["Irk"],
                                 "Cinsiyet": row["Cinsiyet"],
                                 "Yaş": row["Yaş"],
+                                "Doğ. Trh": dogum_tarihi,
+                                "Handikap P.": handikap_puani,
+                                "Tarih": tarih,
                                 "Şehir": sehir,
                                 "Mesafe": mesafe,
+                                "Pist": pist,
                                 "Derece": derece,
+                                "Siklet": siklet,
+                                "Takı": takı,
+                                "Jokey": jokey,
                                 "details": details_url
                             })
+
+                    # If no race data is found, still return horse details
+                    if not race_data:
+                        return [{
+                            "At İsmi": row["At İsmi"],
+                            "Irk": row["Irk"],
+                            "Cinsiyet": row["Cinsiyet"],
+                            "Yaş": row["Yaş"],
+                            "Doğ. Trh": dogum_tarihi,
+                            "Handikap P.": handikap_puani,
+                            "Tarih": None,
+                            "Şehir": None,
+                            "Mesafe": None,
+                            "Pist": None,
+                            "Derece": None,
+                            "Siklet": None,
+                            "Takı": None,
+                            "Jokey": None,
+                            "details": details_url
+                        }]
 
                     return race_data
         
         except (aiohttp.ClientResponseError, aiohttp.ClientConnectionError) as e:
             print(f"Error {e} at URL: {encoded_url}. Attempt {attempt + 1} of {retries}")
             if attempt < retries - 1:
-                await asyncio.sleep(retry_delay)  # wait before retrying
+                # Implement jittered delay before retrying
+                jittered_delay = retry_delay + random.uniform(0, 2)
+                await asyncio.sleep(jittered_delay)
             else:
                 # If it fails after all retries, we record the failure with None values
                 return [{
@@ -208,17 +238,24 @@ async def fetch_race_details(row, retries=10, retry_delay=4):
                     "Irk": row["Irk"],
                     "Cinsiyet": row["Cinsiyet"],
                     "Yaş": row["Yaş"],
+                    "Doğ. Trh": None,
+                    "Handikap P.": None,
+                    "Tarih": None,
                     "Şehir": None,
                     "Mesafe": None,
-                    "Derece": "NONE",
+                    "Pist": None,
+                    "Derece": None,
+                    "Siklet": None,
+                    "Takı": None,
+                    "Jokey": None,
                     "details": details_url
                 }]
 
 # Asynchronous function to scrape all the race details
-async def scrape_all_race_details(df, max_concurrent_requests=50):
+async def scrape_all_race_details(df, max_concurrent_requests=50, retries=10, retry_delay=4):
     tasks = []
     for index, row in df.iterrows():
-        task = asyncio.ensure_future(fetch_race_details(row))
+        task = asyncio.ensure_future(fetch_race_details(row, retries=retries, retry_delay=retry_delay))
         tasks.append(task)
 
         # Control the rate of requests
@@ -245,11 +282,11 @@ async def main():
     # Initialize the output file with headers if it doesn't exist
     if not pd.io.common.file_exists(output_file):
         with open(output_file, 'w', encoding='utf-8-sig') as f:
-            df = pd.DataFrame(columns=["At İsmi", "Irk", "Cinsiyet", "Yaş", "Şehir", "Mesafe", "Derece", "details"])
+            df = pd.DataFrame(columns=["At İsmi", "Irk", "Cinsiyet", "Yaş", "Doğ. Trh", "Handikap P.", "Tarih", "Şehir", "Mesafe", "Pist", "Derece", "Siklet", "Takı", "Jokey", "details"])
             df.to_csv(f, index=False, encoding='utf-8-sig')
 
     # Scrape race details
-    await scrape_all_race_details(df_initial)
+    await scrape_all_race_details(df_initial, max_concurrent_requests=100, retries=5, retry_delay=1)
 
 # Run the asynchronous main function
 asyncio.run(main())

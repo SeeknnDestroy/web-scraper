@@ -162,3 +162,5 @@ cython_debug/
 #.idea/
 testing.py
 *.csv
+*.pkl
+*.log
