@@ -7,11 +7,6 @@ from sklearn.preprocessing import MinMaxScaler, LabelEncoder
 # Load the trained model and scaler
 model = joblib.load('xgboost_model.pkl')
 
-df = pd.read_csv('train.csv')
-# scaler = MinMaxScaler()
-# df[['Mesafe_normalized', 'Age_normalized', 'Derece_ms_normalized']] = scaler.fit_transform(df[['Mesafe', 'Age', 'Derece_ms']])
-# scaler.fit([[800, 2, 47017], [3400, 57, 1279088]])  # Example fitting range; replace with the range from your dataset
-
 scaler: MinMaxScaler = joblib.load('scaler.pkl')
 
 # Define a manual mapping of cities to labels
