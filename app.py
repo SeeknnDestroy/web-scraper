@@ -1,57 +1,106 @@
 import streamlit as st
-import joblib
 import pandas as pd
 import xgboost as xgb
+import joblib
+from sklearn.preprocessing import MinMaxScaler, LabelEncoder
 
-# Load the trained model
+# Load the trained model and scaler
 model = joblib.load('xgboost_model.pkl')
 
-# Define a function to get predictions
-def predict(features):
-    dmatrix = xgb.DMatrix(features)
-    prediction = model.predict(dmatrix)
-    return prediction
+df = pd.read_csv('train.csv')
+# scaler = MinMaxScaler()
+# df[['Mesafe_normalized', 'Age_normalized', 'Derece_ms_normalized']] = scaler.fit_transform(df[['Mesafe', 'Age', 'Derece_ms']])
+# scaler.fit([[800, 2, 47017], [3400, 57, 1279088]])  # Example fitting range; replace with the range from your dataset
 
-# Streamlit app layout
-st.title("Horse Racing Time Prediction App")
-st.write("Enter the features below to predict the race time.")
+scaler: MinMaxScaler = joblib.load('scaler.pkl')
 
-# User input for features
-cinsiyet_binary = st.selectbox("Cinsiyet (1=Erkek, 0=Dişi)", [0, 1])
-irk_binary = st.selectbox("Irk (1=İngiliz, 0=Other)", [0, 1])
-# make mesafe float input not slider but box
-mesafe_normalized = st.number_input("Mesafe (normalized)", min_value=0.0, max_value=1.0, value=0.5)
-age_normalized = st.number_input("Age (normalized)", min_value=0.0, max_value=1.0, value=0.5)
-city_label = st.number_input("City Label", min_value=0, max_value=16, value=14)
-
-# Dynamic Condition feature input
-condition_columns = ['Condition_aa', 'Condition_ad', 'Condition_ae', 'Condition_ag', 
-                    'Condition_ak', 'Condition_da', 'Condition_dd', 'Condition_de', 
-                    'Condition_dg', 'Condition_dk', 'Condition_ka', 'Condition_kd', 
-                    'Condition_ke', 'Condition_kg', 'Condition_kk', 'Condition_ya', 'Condition_yk']
-
-condition_values = {}
-for cond in condition_columns:
-    condition_values[cond] = st.selectbox(f"{cond}", [0, 1])
-
-# Prepare the input data in the same format as training data
-input_data = {
-    'Cinsiyet_binary': [cinsiyet_binary],
-    'Irk_binary': [irk_binary]
+# Define a manual mapping of cities to labels
+city_mapping = {
+    'ABD': 0,
+    'Abu Dhabi Birleşik Arap Emirlikleri': 1,
+    'Adana': 2,
+    'Ankara': 3,
+    'Antalya': 4,
+    'Bursa': 5,
+    'Churchill Downs ABD': 6,
+    'Deauville Fransa': 7,
+    'Diyarbakır': 8,
+    'Elazığ': 9,
+    'Kempton Park Birleşik Krallık': 10,
+    'Kocaeli': 11,
+    'Meydan Dubai': 12,
+    'Santa Anita Park ABD': 13,
+    'İstanbul': 14,
+    'İzmir': 15,
+    'Şanlıurfa': 16
 }
 
-# Add the Condition features to the input data
-input_data.update(condition_values)
+# Function to preprocess the inputs
+def preprocess_input(city, mesafe, age, irk, cinsiyet, condition):
+    # Manually map the city to its encoded value
+    city_encoded = city_mapping[city]
+    
+    # Normalize Mesafe and Age
+    normalized_features = scaler.transform([[mesafe, age, 0]])  # We don't use Derece_ms for scaling, so set to 0
+    mesafe_normalized = normalized_features[0][0]
+    age_normalized = normalized_features[0][1]
 
-# add mesafe, age and city_label
-input_data['Mesafe_normalized'] = [mesafe_normalized]
-input_data['Age_normalized'] = [age_normalized]
-input_data['City_label'] = [city_label]
+    # Encode Irk and Cinsiyet
+    irk_binary = 1 if irk == "İngiliz" else 0
+    cinsiyet_binary = 1 if cinsiyet == "Erkek" else 0
 
-# Convert input data to DataFrame
-input_df = pd.DataFrame(input_data)
+    # Encode Conditions
+    condition_cols = [f'Condition_{c}' for c in ['aa', 'ad', 'ae', 'ag', 'ak', 'da', 'dd', 'de', 'dg', 'dk', 'ka', 'kd', 'ke', 'kg', 'kk', 'ya', 'yk']]
+    condition_encoded = {col: 0 for col in condition_cols}
+    condition_encoded[f'Condition_{condition}'] = 1
 
-# Predict button
+    # Combine all inputs into a single DataFrame
+    input_data = {
+        'Age_normalized': age_normalized,
+        'Cinsiyet_binary': cinsiyet_binary,
+        'Irk_binary': irk_binary,
+        'City_label': city_encoded,
+        'Mesafe_normalized': mesafe_normalized,
+        **condition_encoded
+    }
+
+    input_df = pd.DataFrame([input_data])
+    return input_df
+
+# Streamlit interface
+st.title("Horse Racing Time Prediction App")
+
+# User inputs
+city = st.selectbox("Select City", list(city_mapping.keys()))
+mesafe = st.number_input("Enter Race Distance (meters)", min_value=800, max_value=3400, value=1400)
+age = st.number_input("Enter Horse Age (years)", min_value=2, max_value=57, value=4)
+irk = st.selectbox("Select Breed", options=["Arap", "İngiliz"])
+cinsiyet = st.selectbox("Select Gender", options=["Dişi", "Erkek"])
+condition = st.selectbox("Select Condition", options=['aa', 'ad', 'ae', 'ag', 'ak', 'da', 'dd', 'de', 'dg', 'dk', 'ka', 'kd', 'ke', 'kg', 'kk', 'ya', 'yk'])
+
+
+# Display the prediction
 if st.button("Predict"):
-    prediction = predict(input_df)
-    st.write(f"Predicted Race Time (normalized): {prediction[0]}")
+    # Process the input
+    processed_input = preprocess_input(city, mesafe, age, irk, cinsiyet, condition)
+
+    # Convert the input to DMatrix for prediction
+    dmat_input = xgb.DMatrix(processed_input)
+
+    # Predict the race time in milliseconds
+    predicted_derece_ms_normalized = model.predict(dmat_input)[0]
+
+    # Inverse transform to original scale
+    normalized_values = [[mesafe, age, predicted_derece_ms_normalized]]
+    predicted_derece_ms = scaler.inverse_transform(normalized_values)[0][2]
+
+
+    # Convert to minutes:seconds:milliseconds format
+    def convert_to_time(derece):
+        minutes = int(derece / (60 * 1000))
+        seconds = int((derece % (60 * 1000)) / 1000)
+        milliseconds = int(derece % 1000)
+        return f'{minutes}:{seconds:02d}.{milliseconds:03d}'
+
+    predicted_time = convert_to_time(predicted_derece_ms)
+    st.write(f'The predicted race time (Derece) is: {predicted_time}')
