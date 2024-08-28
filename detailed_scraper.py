@@ -9,7 +9,7 @@ import random
 
 # Load the initial dataset
 input_file = 'horses.csv'
-output_file = 'horse_details.csv'
+output_file = 'horse_details_new.csv'
 
 # Read the initial dataset
 df_initial = pd.read_csv(input_file)
@@ -116,16 +116,6 @@ cookies_list = [
     "_ga=GA1.1.6677889900.1725267890; _ga_MGLMKZ4BFD=GS1.1.1725267890.10.1.1725267891.60.0.0; _gid=GA1.2.1100998877.1725267890",
 ]
 
-# Define the headers to mimic a real browser request
-headers = {
-    "cookie": "_ga=GA1.1.2073242724.1724175667; _ga_MGLMKZ4BFD=GS1.1.1724435017.11.1.1724435114.60.0.0; _gid=GA1.2.1715885817.1724265937",
-    "sec-ch-ua": '"Chromium";v="128", "Not;A=Brand";v="24", "Google Chrome";v="128"',
-    "sec-ch-ua-platform": '"Linux"',
-    "sec-fetch-dest": "document",
-    "sec-fetch-mode": "navigate",
-    "sec-fetch-site": "none",
-    "user-agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36",
-}
 
 # Asynchronous function to fetch and parse the horse details
 async def fetch_race_details(row, retries=10, retry_delay=4):
@@ -286,7 +276,7 @@ async def main():
             df.to_csv(f, index=False, encoding='utf-8-sig')
 
     # Scrape race details
-    await scrape_all_race_details(df_initial, max_concurrent_requests=100, retries=5, retry_delay=1)
+    await scrape_all_race_details(df_initial, max_concurrent_requests=100, retries=10, retry_delay=2)
 
 # Run the asynchronous main function
 asyncio.run(main())
