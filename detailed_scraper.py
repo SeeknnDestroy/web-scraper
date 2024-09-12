@@ -6,6 +6,10 @@ import aiofiles
 import urllib.parse
 import time
 import random
+import logging
+
+# Configure logging
+logging.basicConfig(filename='scraper.log', level=logging.INFO)
 
 # Load the initial dataset
 input_file = 'horses.csv'
@@ -118,62 +122,66 @@ cookies_list = [
 
 
 # Asynchronous function to fetch and parse the horse details
-async def fetch_race_details(row, retries=10, retry_delay=4):
+async def fetch_race_details(row, session, semaphore, queue, retries=5, retry_delay=5):
     details_url = row['details']
-    
-    # Ensure the URL is properly encoded
     encoded_url = urllib.parse.quote(details_url, safe=':/&=?')
 
-    for attempt in range(retries):
-        try:
-            # Randomize sec-ch-ua values or remove some headers
-            headers = {
-                "cookie": random.choice(cookies_list),
-                "sec-ch-ua": f'"Chromium";v="{random.randint(80, 128)}", "Not;A=Brand";v="{random.randint(24, 128)}", "Google Chrome";v="{random.randint(80, 128)}"',
-                "sec-ch-ua-platform": '"Linux"',
-                "sec-fetch-dest": "document",
-                "sec-fetch-mode": "navigate",
-                "sec-fetch-site": "none",
-                "user-agent": random.choice(user_agents),
-            }
-            async with aiohttp.ClientSession(headers=headers) as session:
-                async with session.get(encoded_url) as response:
+    async with semaphore:
+        for attempt in range(retries):
+            try:
+                headers = {
+                    "User-Agent": random.choice(user_agents),
+                    "Accept-Language": "en-US,en;q=0.9",
+                }
+                # Add a random delay to mimic human behavior
+                await asyncio.sleep(random.uniform(1, 3))
+
+                async with session.get(encoded_url, headers=headers) as response:
                     if response.status == 404:
-                        print(f"404 error at URL: {encoded_url}. Attempt {attempt + 1} of {retries}")
+                        logging.warning(f"404 error at URL: {encoded_url}. Attempt {attempt + 1} of {retries}")
                         if attempt < retries - 1:
-                            await asyncio.sleep(retry_delay)  # wait before retrying
+                            await asyncio.sleep(retry_delay)
                             continue
                         else:
-                            raise aiohttp.ClientResponseError(response.request_info, (), status=404)
+                            logging.error(f"404 error at URL: {encoded_url}. Skipping after {retries} attempts.")
+                            return
+                    elif response.status in [429, 503]:
+                        logging.warning(f"Server busy at URL: {encoded_url}. Attempt {attempt + 1} of {retries}")
+                        retry_delay += 5
+                        await asyncio.sleep(retry_delay)
+                        continue
+
                     response.raise_for_status()
                     html_content = await response.text()
                     soup = BeautifulSoup(html_content, 'html.parser')
 
-                    # Extract horse details (Doğum Tarihi, Handikap Puanı)
+                    # Extract horse details
                     horse_details_div = soup.find('div', class_='grid_8 alpha omega kunye')
                     dogum_tarihi = None
                     handikap_puani = None
 
-                    dob_span = horse_details_div.find('span', string='Doğ. Trh')
-                    handicap_span = horse_details_div.find('span', string='Handikap P.')
+                    if horse_details_div:
+                        dob_span = horse_details_div.find('span', string='Doğ. Trh')
+                        handicap_span = horse_details_div.find('span', string='Handikap P.')
 
-                    dogum_tarihi = dob_span.find_next('span', class_='value').get_text(strip=True) if dob_span else None
-                    handikap_puani = handicap_span.find_next('span', class_='value').get_text(strip=True) if handicap_span else None
+                        dogum_tarihi = dob_span.find_next('span', class_='value').get_text(strip=True) if dob_span else None
+                        handikap_puani = handicap_span.find_next('span', class_='value').get_text(strip=True) if handicap_span else None
 
                     # Extract race data
                     race_data = []
                     table_rows = soup.select('tbody.ajaxtbody tr')
                     for race_row in table_rows:
                         columns = race_row.find_all('td')
-                        if len(columns) > 5:  # Check that there are enough columns
-                            tarih = columns[0].get_text(strip=True) if len(columns) > 0 else None
-                            sehir = columns[1].get_text(strip=True) if len(columns) > 1 else None
-                            mesafe = columns[2].get_text(strip=True) if len(columns) > 2 else None
-                            pist = columns[3].get_text(strip=True) if len(columns) > 3 else None
-                            derece = columns[5].get_text(strip=True) if len(columns) > 5 else None
-                            siklet = columns[6].get_text(strip=True) if len(columns) > 6 else None
-                            takı = columns[7].get_text(strip=True) if len(columns) > 7 else None
-                            jokey = columns[8].get_text(strip=True) if len(columns) > 8 else None
+                        if len(columns) > 13:
+                            tarih = columns[0].get_text(strip=True)
+                            sehir = columns[1].get_text(strip=True)
+                            mesafe = columns[2].get_text(strip=True)
+                            pist = columns[3].get_text(strip=True)
+                            derece = columns[5].get_text(strip=True)
+                            siklet = columns[6].get_text(strip=True)
+                            takı = columns[7].get_text(strip=True)
+                            jokey = columns[8].get_text(strip=True)
+                            kosu_cinsi = columns[13].get_text(strip=True)
 
                             race_data.append({
                                 "At İsmi": row["At İsmi"],
@@ -190,12 +198,13 @@ async def fetch_race_details(row, retries=10, retry_delay=4):
                                 "Siklet": siklet,
                                 "Takı": takı,
                                 "Jokey": jokey,
+                                "Kcins": kosu_cinsi,
                                 "details": details_url
                             })
 
                     # If no race data is found, still return horse details
                     if not race_data:
-                        return [{
+                        race_data = [{
                             "At İsmi": row["At İsmi"],
                             "Irk": row["Irk"],
                             "Cinsiyet": row["Cinsiyet"],
@@ -210,73 +219,70 @@ async def fetch_race_details(row, retries=10, retry_delay=4):
                             "Siklet": None,
                             "Takı": None,
                             "Jokey": None,
+                            "Kcins": None,
                             "details": details_url
                         }]
 
-                    return race_data
-        
-        except (aiohttp.ClientResponseError, aiohttp.ClientConnectionError) as e:
-            print(f"Error {e} at URL: {encoded_url}. Attempt {attempt + 1} of {retries}")
-            if attempt < retries - 1:
-                # Implement jittered delay before retrying
-                jittered_delay = retry_delay + random.uniform(0, 2)
-                await asyncio.sleep(jittered_delay)
-            else:
-                # If it fails after all retries, we record the failure with None values
-                return [{
-                    "At İsmi": row["At İsmi"],
-                    "Irk": row["Irk"],
-                    "Cinsiyet": row["Cinsiyet"],
-                    "Yaş": row["Yaş"],
-                    "Doğ. Trh": None,
-                    "Handikap P.": None,
-                    "Tarih": None,
-                    "Şehir": None,
-                    "Mesafe": None,
-                    "Pist": None,
-                    "Derece": None,
-                    "Siklet": None,
-                    "Takı": None,
-                    "Jokey": None,
-                    "details": details_url
-                }]
+                    await queue.put(race_data)
+                    return
 
-# Asynchronous function to scrape all the race details
-async def scrape_all_race_details(df, max_concurrent_requests=50, retries=10, retry_delay=4):
-    tasks = []
-    for index, row in df.iterrows():
-        task = asyncio.ensure_future(fetch_race_details(row, retries=retries, retry_delay=retry_delay))
-        tasks.append(task)
+            except Exception as e:
+                logging.error(f"Error at URL {encoded_url}: {e}")
+                if attempt < retries - 1:
+                    await asyncio.sleep(retry_delay)
+                else:
+                    # Log and skip after retries
+                    logging.error(f"Failed to fetch {encoded_url} after {retries} attempts.")
+                    return
 
-        # Control the rate of requests
-        if len(tasks) >= max_concurrent_requests:
-            await asyncio.sleep(1)  # Introduce a small delay between batches
-            results = await asyncio.gather(*tasks)
-            tasks = []
-            await save_results(results)
-            print(f"Saved results for batch {index + 1}")
-
-    if tasks:
-        results = await asyncio.gather(*tasks)
-        await save_results(results)
-
-# Function to save results incrementally
-async def save_results(results):
-    flat_results = [item for sublist in results for item in sublist]
-    df_enriched = pd.DataFrame(flat_results)
+async def save_results(queue):
     async with aiofiles.open(output_file, 'a', encoding='utf-8-sig') as f:
-        await f.write(df_enriched.to_csv(header=False, index=False, encoding='utf-8-sig'))
+        while True:
+            result = await queue.get()
+            if result is None:
+                break
+            df_enriched = pd.DataFrame(result)
+            await f.write(df_enriched.to_csv(header=False, index=False, encoding='utf-8-sig'))
+            queue.task_done()
 
-# Main function to run the scraper and save the data
 async def main():
-    # Initialize the output file with headers if it doesn't exist
-    if not pd.io.common.file_exists(output_file):
+    # Check if output file exists and initialize headers if it doesn't
+    try:
+        with open(output_file, 'r', encoding='utf-8-sig') as f:
+            pass
+    except FileNotFoundError:
         with open(output_file, 'w', encoding='utf-8-sig') as f:
-            df = pd.DataFrame(columns=["At İsmi", "Irk", "Cinsiyet", "Yaş", "Doğ. Trh", "Handikap P.", "Tarih", "Şehir", "Mesafe", "Pist", "Derece", "Siklet", "Takı", "Jokey", "details"])
+            df = pd.DataFrame(columns=[
+                "At İsmi", "Irk", "Cinsiyet", "Yaş", "Doğ. Trh", "Handikap P.",
+                "Tarih", "Şehir", "Mesafe", "Pist", "Derece", "Siklet",
+                "Takı", "Jokey", "Kcins", "details"
+            ])
             df.to_csv(f, index=False, encoding='utf-8-sig')
 
-    # Scrape race details
-    await scrape_all_race_details(df_initial, max_concurrent_requests=100, retries=10, retry_delay=2)
+    queue = asyncio.Queue()
+    semaphore = asyncio.Semaphore(500)
+
+    async with aiohttp.ClientSession() as session:
+        writer_task = asyncio.create_task(save_results(queue))
+
+        batch_size = 250
+        retries = 15
+        retry_delay = 3
+
+        for i in range(0, len(df_initial), batch_size):
+            batch_df = df_initial.iloc[i:i+batch_size]
+            tasks = [
+                asyncio.create_task(
+                    fetch_race_details(row, session, semaphore, queue, retries, retry_delay)
+                )
+                for _, row in batch_df.iterrows()
+            ]
+            await asyncio.gather(*tasks)
+            await asyncio.sleep(1)  # Delay between batches
+
+        await queue.put(None)
+        await writer_task
 
 # Run the asynchronous main function
-asyncio.run(main())
+if __name__ == "__main__":
+    asyncio.run(main())
