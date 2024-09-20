@@ -4,6 +4,7 @@ from sklearn.preprocessing import MinMaxScaler
 import joblib
 import xgboost as xgb
 import os
+import json
 
 # Function to load encoders
 def load_label_encoders(encoder_dir, categorical_columns):
@@ -48,24 +49,26 @@ def load_model():
 
 # Load the dataset and extract unique values
 def load_data():
-    df = pd.read_csv('train.csv')
+    # df = pd.read_csv('train.csv')
 
-    # Extract unique values for categorical columns
-    unique_values = {}
-    categorical_columns = ['Şehir', 'Jokey', 'Kcins', 'Pist_type', 'Pist_condition']
-    for col in categorical_columns:
-        unique_values[col] = df[col].dropna().unique().tolist()
+    # # Extract unique values for categorical columns
+    # unique_values = {}
+    # categorical_columns = ['Şehir', 'Jokey', 'Kcins', 'Pist_type', 'Pist_condition']
+    # for col in categorical_columns:
+    #     unique_values[col] = df[col].dropna().unique().tolist()
 
-    # Get min and max for numeric columns
-    numeric_columns = ['Age', 'Mesafe', 'Handikap']
-    numeric_ranges = {}
-    for col in numeric_columns:
-        numeric_ranges[col] = {
-            'min': df[col].min(),
-            'max': df[col].max()
-        }
+    # # Get min and max for numeric columns
+    # numeric_columns = ['Age', 'Mesafe', 'Handikap']
+    # numeric_ranges = {}
+    # for col in numeric_columns:
+    #     numeric_ranges[col] = {
+    #         'min': df[col].min(),
+    #         'max': df[col].max()
+    #     }
+    data_summary = json.load(open('data_summary.json', 'r'))
 
-    return unique_values, numeric_ranges
+    return data_summary['unique_values'], data_summary['numeric_ranges']
+
 
 # Main function to run the app
 def main():
