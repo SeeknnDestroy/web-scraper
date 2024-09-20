@@ -19,7 +19,8 @@ output_file = 'retried_data.csv'
 
 def extract_failed_urls(log_file):
     failed_urls = set()
-    pattern = re.compile(r'ERROR:.*Failed to fetch (\S+) after \d+ attempts.')
+    # Updated regex pattern to match both "Failed to fetch" and "404 error at URL"
+    pattern = re.compile(r'ERROR:.*(?:Failed to fetch|404 error at URL): (\S+)\. Skipping after \d+ attempts\.')
     with open(log_file, 'r') as f:
         for line in f:
             match = pattern.search(line)
@@ -29,7 +30,14 @@ def extract_failed_urls(log_file):
     return list(failed_urls)
 
 # List of proxies
-proxies = ['http://178.48.68.61:18080', 'http://160.86.242.23:8080', 'http://20.205.61.143:80', 'http://20.205.61.143:8123', 'http://177.234.241.31:999', 'http://20.210.113.32:8123']
+proxies = [
+    'http://178.48.68.61:18080',
+    'http://160.86.242.23:8080',
+    'http://20.205.61.143:80',
+    'http://20.205.61.143:8123',
+    'http://177.234.241.31:999',
+    'http://20.210.113.32:8123'
+]
 
 user_agents = [
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
@@ -191,6 +199,7 @@ async def fetch_details(url, session, semaphore, retries=5):
     async with semaphore:
         for attempt in range(1, retries + 1):
             try:
+                logging.info(f"Attempting to fetch {url}. Attempt {attempt}/{retries}")
                 proxy = random.choice(proxies) if proxies else None
                 headers = {
                     "User-Agent": random.choice(user_agents),
@@ -208,7 +217,14 @@ async def fetch_details(url, session, semaphore, retries=5):
                         html_content = await response.text()
                         soup = BeautifulSoup(html_content, 'html.parser')
                         data = parse_content(soup, url)
+                        logging.info(f"Successfully fetched {url}")
                         return data
+                    elif response.status == 404:
+                        logging.error(f"404 error at URL: {url}. Attempt {attempt}/{retries}")
+                        if attempt >= retries:
+                            logging.error(f"404 error at URL: {url}. Skipping after {retries} attempts.")
+                            return None
+                        await asyncio.sleep(2 ** attempt)
                     elif response.status in [429, 503]:
                         logging.warning(f"Server busy at {url}. Status: {response.status}. Attempt {attempt}/{retries}")
                         await asyncio.sleep(2 ** attempt)
@@ -238,21 +254,24 @@ if __name__ == "__main__":
     failed_urls = extract_failed_urls(log_file)
     print(f"Found {len(failed_urls)} failed URLs to retry.")
 
-    # Run the scraper
-    start_time = time.time()
-    results = asyncio.run(scrape_failed_urls(failed_urls))
-    end_time = time.time()
-    print(f"Scraping completed in {end_time - start_time:.2f} seconds.")
-
-    # Flatten the list of results
-    data = []
-    for result in results:
-        if result is not None:
-            data.extend(result)
-
-    if data:
-        df = pd.DataFrame(data)
-        df.to_csv(output_file, index=False, encoding='utf-8-sig')
-        print(f"Saved {len(data)} records to '{output_file}'.")
+    if not failed_urls:
+        print("No failed URLs to retry.")
     else:
-        print("No data scraped.")
+        # Run the scraper
+        start_time = time.time()
+        results = asyncio.run(scrape_failed_urls(failed_urls))
+        end_time = time.time()
+        print(f"Scraping completed in {end_time - start_time:.2f} seconds.")
+
+        # Flatten the list of results
+        data = []
+        for result in results:
+            if result is not None:
+                data.extend(result)
+
+        if data:
+            df = pd.DataFrame(data)
+            df.to_csv(output_file, index=False, encoding='utf-8-sig')
+            print(f"Saved {len(data)} records to '{output_file}'.")
+        else:
+            print("No data scraped.")
