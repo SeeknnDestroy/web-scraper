@@ -72,13 +72,13 @@ def main():
     pist_type = st.selectbox("Select Pist Type", sorted(unique_values['Pist_type']), help="Ç: Çim, K: Kum, S: Sentetik")
     pist_condition = st.selectbox("Select Pist Condition", sorted(unique_values['Pist_condition']))
     kcins = st.selectbox("Select Koşu Cinsi", sorted(unique_values['Kcins']))
+    horse_name = st.selectbox("Select Horse Name", sorted(unique_values['Horse_name']))
     age = st.number_input(
         "Enter Horse Age (years)",
         min_value=int(numeric_ranges['Age']['min']),
         max_value=int(numeric_ranges['Age']['max']),
         value=int(numeric_ranges['Age']['min'])
     )
-    horse_name = st.selectbox("Select Horse Name", sorted(unique_values['Horse_name']))
     irk = st.selectbox("Select Breed", ['İngiliz', 'Arap'])
     cinsiyet = st.selectbox("Select Gender", ['Erkek', 'Dişi'])
     jokey = st.selectbox("Select Jokey", sorted(unique_values['Jokey']))
