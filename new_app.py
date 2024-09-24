@@ -84,7 +84,7 @@ def main():
     jokey = st.selectbox("Select Jokey", sorted(unique_values['Jokey']))
 
     handikap = st.number_input(
-        "Enter Handikap Score (-1 if not applicable)",
+        "Enter Handikap Score (0 if not applicable)",
         min_value=int(numeric_ranges['Handikap']['min']),
         max_value=int(numeric_ranges['Handikap']['max']),
         value=int(numeric_ranges['Handikap']['min'])
