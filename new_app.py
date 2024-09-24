@@ -49,22 +49,6 @@ def load_model():
 
 # Load the dataset and extract unique values
 def load_data():
-    # df = pd.read_csv('train.csv')
-
-    # # Extract unique values for categorical columns
-    # unique_values = {}
-    # categorical_columns = ['Şehir', 'Jokey', 'Kcins', 'Pist_type', 'Pist_condition']
-    # for col in categorical_columns:
-    #     unique_values[col] = df[col].dropna().unique().tolist()
-
-    # # Get min and max for numeric columns
-    # numeric_columns = ['Age', 'Mesafe', 'Handikap']
-    # numeric_ranges = {}
-    # for col in numeric_columns:
-    #     numeric_ranges[col] = {
-    #         'min': df[col].min(),
-    #         'max': df[col].max()
-    #     }
     data_summary = json.load(open('data_summary.json', 'r'))
 
     return data_summary['unique_values'], data_summary['numeric_ranges']
@@ -94,6 +78,7 @@ def main():
         max_value=int(numeric_ranges['Age']['max']),
         value=int(numeric_ranges['Age']['min'])
     )
+    horse_name = st.selectbox("Select Horse Name", sorted(unique_values['Horse_name']))
     irk = st.selectbox("Select Breed", ['İngiliz', 'Arap'])
     cinsiyet = st.selectbox("Select Gender", ['Erkek', 'Dişi'])
     jokey = st.selectbox("Select Jokey", sorted(unique_values['Jokey']))
@@ -108,6 +93,7 @@ def main():
     if st.button("Predict Race Time"):
         # Collect input data into a DataFrame
         input_data = {
+            'Horse_name': horse_name,
             'Şehir': şehir,
             'Jokey': jokey,
             'Kcins': kcins,
@@ -122,7 +108,7 @@ def main():
         input_df = pd.DataFrame([input_data])
 
         # Load encoders
-        categorical_columns = ['Şehir', 'Jokey', 'Kcins', 'Pist_type', 'Pist_condition']
+        categorical_columns = ['Horse_name', 'Şehir', 'Jokey', 'Kcins', 'Pist_type', 'Pist_condition']
         encoders = load_label_encoders('encoders', categorical_columns)
 
         # Encode binary variables
@@ -138,7 +124,7 @@ def main():
 
         # Prepare data for prediction
         feature_columns = [
-            'Age_normalized', 'Cinsiyet_binary', 'Irk_binary', 'Mesafe_normalized',
+            'Horse_name_label', 'Age_normalized', 'Cinsiyet_binary', 'Irk_binary', 'Mesafe_normalized',
             'Handikap_normalized', 'Pist_type_label', 'Pist_condition_label', 'Kcins_label', 'Şehir_label', 'Jokey_label'
         ]
         X = preprocessed_input[feature_columns]
